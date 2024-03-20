@@ -1,207 +1,216 @@
-cat("Setting options... \n\n", sep = "")
-options(scipen = 999) # turns off scientific notation
-options(encoding = "UTF-8") # sets string encoding to UTF-8 instead of ANSI
+# install libraries
+devtools::install_github("wilkelab/ggtext")
+install.packages("devtools")
+install.packages("rcartocolor")
 
 
-# Install packages & load libraries ---------------------------------------
-cat("Install packages & load libraries... \n\n", sep = "")
-packages <- c("tidyverse", "data.table", "extrafont") # list of packages to load
-n_packages <- length(packages) # count how many packages are required
-
-new_pkg <- packages[!(packages %in% installed.packages())] # determine which packages aren't installed
-
-# Install missing packages
-if(length(new_pkg)){
-  install.packages(new_pkg)
-}
-
-# Load all required libraries
-for(n in 1:n_packages){
-  cat("Loading Library #", n, " of ", n_packages, "... Currently Loading: ", packages[n], "\n", sep = "")
-  lib_load <- paste("library(\"",packages[n],"\")", sep = "") # create string of text for loading each library
-  eval(parse(text = lib_load)) # evaluate the string to load the library
-}
-
-# Load fonts
-loadfonts(device = "win")
+# Import libraries
+library(tidyverse)
+library(ggtext)
+library(ragg)
+library(rcartocolor)
+library(devtools)
 
 
-# Style -------------------------------------------------------------------
-cat("Setting style... \n\n", sep = "")
-
-# Color palette
-base_clear <- "#efeef2"
-base_clear_sh <- "#e1e2e7"
-base_text <- "#2e2445"
-base_accent_light <- "#f2e1d5"
-color_1 <- "#5fb0dd"
-color_2 <- "#f04b73"
-color_positive <- "#284D33"
-color_negative <- "#6B3842"
-
-# Fonts
-font_base <- "Lato"
-font_title <- "Lato Black"
-
-
-# Load data ---------------------------------------------------------------
-cat("Loading data... \n\n", sep = "")
-dt <- fread("C:/Users/SDePal01/Downloads/eolica.csv", header = TRUE)
-
-
-# Transform data ----------------------------------------------------------
-cat("Transforming data... \n\n", sep = "")
-
-# Long format
-dt <- dt %>%
-  melt(id.vars = "CCAA", measure.vars = c("2012", "2022"), value.name = "GWh", variable.name = "Año") 
-
-# Set hjust type
-dt[, my_hjust := fifelse(GWh[2] - GWh[1] >= 0, 1, 0), CCAA]
-dt[Año == 2012, my_hjust := fifelse(my_hjust == 1, 0, 1)]
-dt[, nchar := nchar(GWh) + 1]
-
-
-# Plot --------------------------------------------------------------------
-cat("Plotting... \n\n", sep = "")
-
-plot <- dt[,
-           # Plot
-           ggplot(.SD, aes(
-             x = reorder(CCAA, GWh),
-             y = GWh,
-             fill = Año,
-             group = Año)
-             ) +
-             
-             # Geoms
-             geom_line(aes(group = CCAA), color = base_accent_light, linewidth =
-                         3.5) +
-             geom_point(aes(color = Año), size = 3) +
-             geom_text(
-               aes(label = GWh, color = Año),
-               nudge_y = fifelse(my_hjust == 1, nchar * 180, -nchar * 180),
-               hjust = my_hjust,
-               show.legend = FALSE
-             ) +
-             
-             # Scales
-             scale_color_manual(values = c(color_1, color_2)) +
-             scale_y_continuous(limits = c(-500, 16000),
-                                breaks = seq(0, 16000, 2000)) +
-             
-             # Flip coordinates
-             coord_flip() +
-             
-             # Labels
-             labs(
-               title = "Energía eólica en España",
-               subtitle = "GWh producidos en 2012 y 2022",
-               caption = "Fuente: Elaboración propia a partir de datos oficiales del Gobierno de España\nmichal0091",
-               x = NULL,
-               y = NULL
-             ) +
-             
-             # Theme
-             theme_minimal() +
-             theme(
-               legend.position = "top",
-               text = element_text(color = base_text, family = font_base),
-               plot.title = element_text(
-                 color = base_text,
-                 family = font_title,
-                 size = 18
-               ),
-               axis.text.x = element_text(color = base_text, family = font_title),
-               axis.text.y = element_text(
-                 color = base_text,
-                 family = font_base,
-                 size = 12
-               ),
-               plot.caption =  element_text(
-                 color = base_text,
-                 family = font_base,
-                 size = 8
-               ),
-               plot.margin = margin(1.5, 0.5, 1, 1, "cm"),
-               panel.grid = element_blank(),
-               plot.background = element_rect(fill = base_clear)
-             ) 
-             ]
-
-# Add text 
-dt_diff <- dt[, .(diff = GWh[2] - GWh[1]), CCAA]
-dt_diff[, diff_label := fcase(
-  diff > 0, paste0("+", abs(diff)),
-  diff < 0, paste0("-", abs(diff)),
-  diff == 0, "0"
-)]
-
-# Convert to factor
-dt_diff[, CCAA := factor(CCAA, levels = CCAA)]
-
-# Add color
-dt_diff[, color := fcase(
-  diff > 0, color_positive,
-  diff < 0, color_negative,
-  diff == 0, base_text
-)]
-
-# Make plot box information with difference between 2012 and 2022
-plot_box <- dt_diff[, ggplot(.SD) +
-                      # Geoms
-                      geom_text(
-                        aes(
-                          x = reorder(CCAA,-as.numeric(CCAA)),
-                          y = 0,
-                          label = diff_label,
-                          family = font_base,
-                          vjust = 1
-                        ),
-                        fontface = "bold",
-                        size = 3.5,
-                        color = color
-                      ) +
-                      geom_text(
-                        aes(x = 18, y = 0), # 18 is the length + 1 of the x axis
-                        label = "dif.",
-                        nudge_y = .0,
-                        nudge_x = .8, 
-                        color = base_text,
-                        family = font_title,
-                        size = 3.5,
-                        vjust = "inward",
-                        hjust = "inward"
-                      ) +
-                      # Flip coordinates
-                      coord_flip() +
-                      theme_void() +
-                      # Theme
-                      theme(
-                        text = element_text(color = base_text, family = font_base),
-                        plot.margin = margin(
-                          l = 0,
-                          r = 0,
-                          b = 0,
-                          t = 0
-                        ),
-                        panel.background = element_rect(fill = base_clear_sh, color = base_clear_sh),
-                        legend.position = "none"
-                      )]
-
-# Make combined plot
-plot_combined <- plot + annotation_custom(ggplotGrob(plot_box), xmin = 0.25, xmax = 19, 
-                       ymin = 15500, ymax = 16500)
-
-# Save plot ---------------------------------------------------------------
-cat("Saving plot... \n\n", sep = "")
-
-ggsave(
-  filename = "eolica.png",
-  path = normalizePath("C:/Users/SDePal01/Downloads"),
-  plot = plot_combined,
-  device = "png",
-  units = "cm",
-  width = 30 ,
-  height = 18.54102
+# Set ggplot theme
+theme_set(theme_minimal(base_family = "Atlantis", base_size = 13))
+theme_update(
+  plot.margin = margin(25, 15, 15, 25),
+  plot.background = element_rect(color = "#FFFCFC", fill = "#FFFCFC"),
+  panel.grid.major.x = element_line(color = "grey94"),
+  panel.grid.major.y = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.text = element_text(family = "Hydrophilia Iced"),
+  axis.text.x = element_text(color = "grey40"),
+  axis.text.y = element_blank(),
+  axis.title = element_blank(),
+  axis.ticks = element_blank(),
+  legend.position = c(.07, .31), 
+  legend.title = element_text(
+    color = "grey40", 
+    family = "Overpass", 
+    angle = 90, 
+    hjust = .5
+  ),
+  legend.text = element_text(
+    color = "grey40", 
+    family = "Hydrophilia Iced", 
+    size = 12
+  ),
+  legend.box = "horizontal",
+  legend.box.just = "bottom",
+  legend.margin = margin(0, 0, 0, 0),
+  legend.spacing = unit(.6, "lines"),
+  plot.title = element_text(
+    family = "Atlantis Headline", 
+    face = "bold", 
+    size = 17.45
+  ),
+  plot.subtitle = element_textbox_simple(
+    family = "Overpass", 
+    color = "grey40", 
+    size = 10.8,
+    lineheight = 1.3, 
+    margin = margin(t = 5, b = 30)
+  ),
+  plot.caption = element_text(
+    family = "Overpass", 
+    color = "grey55", 
+    size = 10.5, 
+    margin = margin(t = 20, b = 0, r = 15)
+  )
 )
+df_records <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-05-25/records.csv')
+
+df_rank <- 
+  df_records %>% 
+  filter(type == "Three Lap") %>%  
+  group_by(track) %>% 
+  filter(time == min(time)) %>% 
+  ungroup %>% 
+  arrange(-time) %>% 
+  mutate(track = factor(track, levels = unique(track)))
+
+
+df_records_three <-
+  df_records %>% 
+  filter(type == "Three Lap") %>% 
+  mutate(year = lubridate::year(date)) %>% 
+  mutate(track = factor(track, levels = levels(df_rank$track)))
+
+df_connect <- 
+  df_records_three %>% 
+  group_by(track, type, shortcut) %>% 
+  summarize(no = min(time), yes = max(time)) %>% 
+  pivot_longer(cols = -c(track, type, shortcut),
+               names_to = "record", values_to = "time") %>% 
+  filter((shortcut == "No" & record == "no") | (shortcut == "Yes" & record == "yes")) %>% 
+  pivot_wider(id_cols = c(track), values_from = time, names_from = record)
+
+df_longdist <- 
+  df_records_three %>% 
+  filter(shortcut == "No") %>% 
+  group_by(track) %>% 
+  filter(time == min(time) | time == max(time)) %>% 
+  mutate(group = if_else(time == min(time), "min", "max")) %>% 
+  group_by(track, group) %>%
+  arrange(time) %>% 
+  slice(1) %>% 
+  group_by(track) %>% 
+  mutate(year = max(year)) %>% 
+  pivot_wider(id_cols = c(track, year), values_from = time, names_from = group) %>% 
+  mutate(diff = max - min) 
+
+df_shortcut <- 
+  df_records_three %>% 
+  filter(shortcut == "Yes") %>% 
+  group_by(track) %>% 
+  filter(time == min(time) | time == max(time)) %>% 
+  mutate(group = if_else(time == min(time), "min", "max")) %>% 
+  group_by(track, group) %>%
+  arrange(time) %>% 
+  slice(1) %>% 
+  group_by(track) %>% 
+  mutate(year = max(year)) %>% 
+  pivot_wider(id_cols = c(track, year), values_from = time, names_from = group) %>% 
+  mutate(diff = max - min)
+  
+  ## Plot
+p <- df_shortcut %>% 
+  ggplot(aes(min, track)) +
+  # Dotted line connection shortcut yes/no
+  # This geom uses `df_connect` instead of `df_shorcut` because it is being
+  # explicitly overridden
+  geom_linerange(
+    data = df_connect, 
+    aes(xmin = yes, xmax = no, y = track), 
+    inherit.aes = FALSE, 
+    color = "grey75", 
+    linetype = "11" # dotted line
+  ) +
+  # Segment when shortcut==yes
+  # When the `data` argument is missing in the `geom_*` function
+  geom_linerange(aes(xmin = min, xmax = max, color = diff), size = 2) +
+  # Segment when shortcut==no. Overlapped lineranges.
+  geom_linerange(data = df_longdist, aes(xmin = min, xmax = max, color = diff), size = 2) +
+  geom_linerange(data = df_longdist, aes(xmin = min, xmax = max), color = "#FFFCFC", size = .8)
+
+p <- p +
+  # Point when shortcut==yes – first record
+  geom_point(aes(x = max), size = 7, color = "#FFFCFC", fill = "grey65", shape = 21, stroke = .7) +
+  # Point when shortcut==yes – latest record. 
+  geom_point(aes(fill = year), size = 7, color = "#FFFCFC", shape = 21, stroke = .7) +
+  # Point when shortcut==no – first record. 
+  geom_point(data = df_longdist, aes(fill = year), size = 5.6, shape = 21, 
+             color = "#FFFCFC", stroke = .5) +
+  geom_point(data = df_longdist, size = 3, color = "#FFFCFC") +
+  # Point when shortcut==no – latest record
+  geom_point(data = df_longdist, aes(x = max), size = 5.6, shape = 21, 
+             fill = "grey65", color = "#FFFCFC", stroke = .5) +
+  geom_point(data = df_longdist, aes(x = max), size = 3, color = "#FFFCFC")
+
+p <- p + 
+  ## labels tracks
+  geom_label(aes(label = track), family = "Atlantis", size = 6.6, hjust = 1, nudge_x = -7,
+             label.size = 0, fill = "#FFFCFC") +
+  geom_label(data = filter(df_longdist, !track %in% unique(df_shortcut$track)), 
+             aes(label = track), family = "Atlantis", size = 6.6, hjust = 1, nudge_x = -7,
+             label.size = 0, fill = "#FFFCFC") +
+  ## labels dots when shortcut==yes
+  geom_text(data = filter(df_shortcut, track == "Wario Stadium"),
+             aes(label = "Most recent record\nwith shortcuts"), 
+             family = "Overpass", size = 3.5, color = "#4a5a7b", 
+             lineheight = .8, vjust = 0, nudge_y = .4) +
+  geom_text(data = filter(df_shortcut, track == "Wario Stadium"),
+             aes(x = max, label = "First record\nwith shortcuts"), 
+             family = "Overpass", size = 3.5, color = "grey50", 
+             lineheight = .8, vjust = 0, nudge_y = .4) +
+  ## labels dots when shortcut==no
+  geom_text(data = filter(df_longdist, track == "Wario Stadium"),
+             aes(label = "Most recent record\nw/o shortcuts"), 
+             family = "Overpass", size = 3.5, color = "#4a5a7b", lineheight = .8, 
+             vjust = 0, nudge_x = -7, nudge_y = .4) +
+  geom_text(data = filter(df_longdist, track == "Wario Stadium"),
+             aes(x = max, label = "First record\nw/o shortcuts"), 
+             family = "Overpass", size = 3.5, color = "grey50", lineheight = .8, 
+             vjust = 0, nudge_x = 7, nudge_y = .4)
+
+p <- p + 
+  # Extend horizontal axis so trackl labels fit
+  coord_cartesian(xlim = c(-60, 400)) +
+  scale_x_continuous(
+    breaks = seq(0, 400, by = 50), 
+    # Add 'seconds' label only to first axis tick
+    labels = function(x) ifelse(x == 0, paste(x, "seconds"), paste(x)),
+    sec.axis = dup_axis(), # Add axis ticks and labels both on top and bottom.
+    expand = c(.02, .02)
+  ) +
+  scale_y_discrete(expand = c(.07, .07)) +
+  scale_fill_gradient(low = "#b4d1d2", high = "#242c3c", name = "Year of Record") +
+  rcartocolor::scale_color_carto_c(
+    palette = "RedOr", 
+    limits = c(0, 250),
+    name = "Time difference between first and most recent record"
+  )
+
+p <- p + 
+  guides(
+    fill = guide_legend(title.position = "left"),
+    color = guide_colorbar(
+      barwidth = unit(.45, "lines"),
+      barheight = unit(22, "lines"),
+      title.position = "left"
+    )
+  ) +
+  labs(
+    title = "Let's-a-Go!  You  May  Still  Have  Chances  to  Grab  a  New  World  Record  for  Mario  Kart  64",
+    subtitle = "Most world records for Mario Kart 64 were achieved pretty recently (13 in 2020, 10 in 2021). On several tracks, the players considerably improved the time needed to complete three laps when they used shortcuts (*Choco Mountain*, *D.K.'s Jungle Parkway*, *Frappe Snowland*, *Luigi Raceway*, *Rainbow Road*, *Royal Raceway*, *Toad's Turnpike*, *Wario Stadium*, and *Yoshi Valley*). Actually, for three out of these tracks the previous records were more than halved since 2020 (*Luigi Raceway*, *Rainbow Road*, and *Toad's Turnpike*). Four other tracks still have no records for races with shortcuts (*Moo Moo Farm*, *Koopa Troopa Beach*, *Banshee Boardwalk*, and *Bowser's Castle*). Are there none or did nobody find them yet? Pretty unrealistic given the fact that since more than 24 years the game is played all around the world—but maybe you're able to find one and obtain a new world record?",
+    caption = "Visualization: Cédric Scherer  •  Data: mkwrs.com/mk64"
+  )
+ggsave(
+  filename = "Downloads/lollipop-plot-with-r-mario-kart-64-world-records.png",
+  plot = p,
+  width = 20, height = 13, units = "in", device = "png", limitsize = FALSE
+)
+
+print(p)
